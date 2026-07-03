@@ -1,0 +1,13 @@
+// Merge into openclaw.json — do NOT clobber your existing cliBackends block.
+// This wires the router in front of the bundled claude-cli backend.
+{
+  agents: {
+    defaults: {
+      cliBackends: {
+        "claude-cli": {
+          command: "/root/scripts/claude-auth-router.sh"
+        }
+      }
+    }
+  }
+}

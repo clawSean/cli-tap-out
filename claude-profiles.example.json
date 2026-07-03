@@ -1,0 +1,20 @@
+{
+  "active": "primary",
+  "profiles": {
+    "primary": {
+      "label": "Primary",
+      "env_var": "ANTHROPIC_OAUTH_TOKEN1",
+      "cooldown_until": 0
+    },
+    "secondary": {
+      "label": "Secondary",
+      "env_var": "ANTHROPIC_OAUTH_TOKEN2",
+      "cooldown_until": 0
+    },
+    "tertiary": {
+      "label": "Tertiary",
+      "env_var": "ANTHROPIC_OAUTH_TOKEN3",
+      "cooldown_until": 0
+    }
+  }
+}
