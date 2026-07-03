@@ -1,4 +1,11 @@
-# claude-auth-router — multi-account rotation for OpenClaw's `claude-cli` backend
+# ClawFabe 🦞🤼 — multi-account Claude auth rotation for OpenClaw's `claude-cli` backend
+
+> **The name:** *kayfabe* (pro wrestling slang) is the code of presenting staged
+> events as real — never break character, never let the audience see behind the
+> curtain. **ClawFabe** does exactly that for Claude auth: your OpenClaw session
+> looks like one continuous, healthy Claude conversation, while backstage the
+> router detects rate limits mid-stream and hot-tags in a fresh account. The
+> audience never sees the swap. (The claw part is self-explanatory.)
 
 A bash wrapper that sits between OpenClaw and the `claude` CLI. It lets one
 OpenClaw host run multiple Claude subscription accounts (OAuth tokens) behind a
