@@ -1,18 +1,35 @@
-# cli-tap-out 🥋 — multi-account Claude auth rotation for OpenClaw's `claude-cli` backend
+# cli-tap-out 🥋 — multiple Claude accounts for Claude CLI + OpenClaw
+
+> **Plain English:** `cli-tap-out` lets one OpenClaw `claude-cli/*` model lane
+> use multiple Claude subscription accounts. It wraps the `claude` CLI, selects
+> the active OAuth token, and switches to the next configured account when the
+> current one hits a Claude session limit.
+
+Claude CLI is built around one active Claude auth identity at a time. This repo
+adds the missing multi-account layer for OpenClaw: a profile pool, safe token
+selection, real session-limit detection, cooldown tracking, and account failover
+for the bundled `claude-cli` backend.
 
 > **The name:** in combat sports, you *tap out* when a submission hold sinks in
 > — and your fresh tag-team partner jumps in to keep the fight going.
-> **cli-tap-out** does exactly that for Claude auth: when a rate limit chokes
-> out the active account mid-stream, the router taps it out, benches it until
-> its window resets, and tags in the next account. The match never stops.
+> `cli-tap-out` does exactly that for Claude auth: when a rate limit chokes out
+> the active account mid-stream, the router taps it out, benches it until its
+> window resets, and tags in the next account. The match never stops.
 
-A bash wrapper that sits between OpenClaw and the `claude` CLI. It lets one
-OpenClaw host run multiple Claude subscription accounts (OAuth tokens) behind a
-single `claude-cli/*` model lane, and **auto-rotates to the next account when
-one hits its session limit** — mid-turn, without wedging the session, with a
-friendly "I switched accounts, resend your message" reply delivered to the chat.
+Battle-tested on OpenClaw >= 2026.6.x with Claude Code stream-json live sessions.
 
-Battle-tested on OpenClaw ≥ 2026.6.x with Claude Code stream-json live sessions.
+## At a glance
+
+| If you need... | `cli-tap-out` gives you... |
+|---|---|
+| Multiple Claude accounts working through Claude CLI | One `claude-cli/*` lane backed by several OAuth-token profiles |
+| Automatic account switching on Claude session limits | Live rate-limit detection, profile cooldowns, and next-account rotation |
+| OpenClaw compatibility | A command override for the existing `claude-cli` backend, not a forked backend |
+| Auditable behavior | JSON state fields showing the active profile, cooldown source, and reset time |
+
+This is **not** a generic model router, Anthropic API-key load balancer, or
+replacement for Claude CLI. It is specifically the glue that makes multiple
+Claude accounts usable from OpenClaw's Claude CLI backend.
 
 ## What it does
 
