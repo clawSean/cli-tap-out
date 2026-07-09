@@ -15,6 +15,13 @@
 # run (and the foreman) picks up the new profile. To switch manually, edit
 # the "active" field in claude-profiles.json.
 #
+# All-profiles-exhausted behavior: when a rotation finds no usable profile
+# (every account cooling down), the router surfaces a REAL error (is_error
+# result + non-zero exit) instead of the friendly synthetic success, so
+# OpenClaw's native model fallback can hand the turn to the next model in
+# agents.defaults.model.fallbacks. The friendly source-chat note still fires.
+# Set CLAUDE_AUTH_ROUTER_ERROR_ON_EXHAUSTED=0 for the old always-friendly mode.
+#
 # Token env var names must be shell-safe: [A-Za-z_][A-Za-z0-9_]* (no hyphens).
 
 set -euo pipefail
@@ -112,6 +119,7 @@ FRIENDLY_RATE_LIMIT_MESSAGE="${FRIENDLY_RATE_LIMIT_MESSAGE_OVERRIDE:-$FRIENDLY_R
 # turn per churn. 2h keeps churn rare without benching a profile past reset.
 RATE_LIMIT_COOLDOWN_SECONDS="${CLAUDE_AUTH_ROUTER_COOLDOWN_SECONDS:-7200}"
 RATE_LIMIT_PROFILE_ROTATED=""
+RATE_LIMIT_ALL_EXHAUSTED=""
 RATE_LIMIT_NEXT_PROFILE=""
 RATE_LIMIT_NEXT_PROFILE_LABEL=""
 # Real reset time (unix epoch) captured from the failing turn's
@@ -160,11 +168,23 @@ set_rate_limit_message() {
     FRIENDLY_RATE_LIMIT_MESSAGE="$FRIENDLY_RATE_LIMIT_MESSAGE_OVERRIDE"
   elif [[ -n "$RATE_LIMIT_PROFILE_ROTATED" ]]; then
     FRIENDLY_RATE_LIMIT_MESSAGE="Claude hit a session limit 🧱, so I switched Claude from ${PROFILE_LABEL} to ${RATE_LIMIT_NEXT_PROFILE_LABEL} 🔁. Please send your last message again now ⚡"
+  elif exhausted_error_eligible; then
+    FRIENDLY_RATE_LIMIT_MESSAGE="Claude hit a session limit on every configured account 🧱 — all profiles are cooling down. Handing this turn back to OpenClaw so a fallback model can answer if one is configured 🔀. Claude lanes recover automatically as limits reset ⏳"
   elif [[ -n "$PROFILE_EXPLICIT" ]]; then
     FRIENDLY_RATE_LIMIT_MESSAGE="Claude hit a session limit on the pinned ${PROFILE_LABEL} profile 📌 before I could answer. Please choose another Claude profile or try again after the limit resets ⏳"
   else
     FRIENDLY_RATE_LIMIT_MESSAGE="$FRIENDLY_RATE_LIMIT_MESSAGE_DEFAULT"
   fi
+}
+
+# All configured profiles are rate-limited and error-on-exhausted is enabled
+# (default): instead of masking the failure as a friendly synthetic success —
+# which blocks OpenClaw's native model fallback from ever firing — surface a
+# real error so OpenClaw can hand the turn to the next model in
+# agents.defaults.model.fallbacks. Set CLAUDE_AUTH_ROUTER_ERROR_ON_EXHAUSTED=0
+# to restore the old always-friendly behavior.
+exhausted_error_eligible() {
+  [[ -n "$RATE_LIMIT_ALL_EXHAUSTED" && "${CLAUDE_AUTH_ROUTER_ERROR_ON_EXHAUSTED:-1}" == "1" ]]
 }
 
 notify_source_chat() {
@@ -200,6 +220,7 @@ rotate_rate_limited_profile() {
   RATE_LIMIT_PROFILE_ROTATED=""
   RATE_LIMIT_NEXT_PROFILE=""
   RATE_LIMIT_NEXT_PROFILE_LABEL=""
+  RATE_LIMIT_ALL_EXHAUSTED=""
 
   if [[ "${CLAUDE_AUTH_ROUTER_ROTATE_ON_RATE_LIMIT:-1}" != "1" || -n "$PROFILE_EXPLICIT" ]]; then
     set_rate_limit_message
@@ -312,6 +333,8 @@ PY
     RATE_LIMIT_PROFILE_ROTATED=1
     RATE_LIMIT_NEXT_PROFILE="$rotate_profile"
     RATE_LIMIT_NEXT_PROFILE_LABEL="${rotate_label:-$rotate_profile}"
+  elif [[ "$rotate_status" == "NO_READY_PROFILE" ]]; then
+    RATE_LIMIT_ALL_EXHAUSTED=1
   fi
 
   set_rate_limit_message
@@ -371,6 +394,51 @@ result = {
     "router_emitted_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
 }
 print(json.dumps(assistant, ensure_ascii=False, separators=(",", ":")))
+print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+PY
+}
+
+# Terminal error result for the all-profiles-exhausted case. A real is_error
+# result + non-zero exit is what pre-router claude produced on a limit; it is
+# what lets OpenClaw classify the turn as a provider failure and try the next
+# model in agents.defaults.model.fallbacks (defaults/auto sessions only —
+# user-pinned sessions surface the error visibly by OpenClaw's own design).
+emit_error_stream_json() {
+  CLAUDE_AUTH_ROUTER_RATE_LIMIT_MESSAGE="$FRIENDLY_RATE_LIMIT_MESSAGE" \
+  CLAUDE_AUTH_ROUTER_RATE_LIMIT_PROFILE="$PROFILE" \
+  CLAUDE_AUTH_ROUTER_RATE_LIMIT_PROFILE_LABEL="$PROFILE_LABEL" \
+    python3 - <<'PY'
+import json, os, time
+
+message = os.environ["CLAUDE_AUTH_ROUTER_RATE_LIMIT_MESSAGE"]
+session_id = "claude-auth-router-rate-limit"
+result = {
+    "type": "result",
+    "subtype": "error_during_execution",
+    "is_error": True,
+    "api_error_status": 429,
+    "duration_ms": 0,
+    "duration_api_ms": 0,
+    "num_turns": 1,
+    "result": message,
+    "stop_reason": None,
+    "session_id": session_id,
+    "total_cost_usd": 0,
+    "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 0,
+    },
+    "modelUsage": {},
+    "permission_denials": [],
+    "terminal_reason": "error",
+    "router_friendly_rate_limit": False,
+    "router_all_profiles_exhausted": True,
+    "router_rate_limited_profile": os.environ.get("CLAUDE_AUTH_ROUTER_RATE_LIMIT_PROFILE") or None,
+    "router_rate_limited_profile_label": os.environ.get("CLAUDE_AUTH_ROUTER_RATE_LIMIT_PROFILE_LABEL") or None,
+    "router_emitted_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+}
 print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
 PY
 }
@@ -578,12 +646,21 @@ for line in sys.stdin:
     RATE_LIMIT_RESET_AT="$(sed -n '2p' "$TMPFLAG" 2>/dev/null | tr -cd '0-9')"
     [[ -n "$RATE_LIMIT_RESET_AT" ]] || RATE_LIMIT_RESET_AT="$(extract_reset_at_file "$TMPERR")"
     rotate_rate_limited_profile
+    if exhausted_error_eligible; then
+      emit_error_stream_json
+      exit 1
+    fi
     emit_friendly_stream_json
     exit 0
   fi
   if [[ "$CLAUDE_STATUS" -ne 0 ]] && is_rate_limit_file "$TMPERR"; then
     RATE_LIMIT_RESET_AT="$(extract_reset_at_file "$TMPERR")"
     rotate_rate_limited_profile
+    if exhausted_error_eligible; then
+      emit_error_stream_json
+      cat "$TMPERR" >&2
+      exit "$CLAUDE_STATUS"
+    fi
     emit_friendly_stream_json
     exit 0
   fi
@@ -608,6 +685,15 @@ if [[ "$CLAUDE_STATUS" -ne 0 ]] && { is_rate_limit_file "$TMPOUT" || is_rate_lim
   RATE_LIMIT_RESET_AT="$(extract_reset_at_file "$TMPOUT")"
   [[ -n "$RATE_LIMIT_RESET_AT" ]] || RATE_LIMIT_RESET_AT="$(extract_reset_at_file "$TMPERR")"
   rotate_rate_limited_profile
+  if exhausted_error_eligible; then
+    # Raw passthrough: the original claude error output + exit code is the
+    # cleanest provider-failure signal for OpenClaw's native model fallback.
+    cat "$TMPOUT"
+    if [[ -s "$TMPERR" ]]; then
+      cat "$TMPERR" >&2
+    fi
+    exit "$CLAUDE_STATUS"
+  fi
   if [[ -n "$JSON_OUTPUT" ]]; then
     CLAUDE_AUTH_ROUTER_RATE_LIMIT_MESSAGE="$FRIENDLY_RATE_LIMIT_MESSAGE" \
     CLAUDE_AUTH_ROUTER_RATE_LIMIT_PROFILE="$PROFILE" \

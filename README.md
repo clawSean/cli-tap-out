@@ -55,6 +55,14 @@ Claude accounts usable from OpenClaw's Claude CLI backend.
 4. **Friendly result.** Emits a synthetic assistant+result stream-json pair
    ("Claude hit a session limit 🧱, so I switched from X to Y 🔁. Please resend
    ⚡") so the gateway gets a clean turn end instead of an error.
+   **Exception — all profiles exhausted:** when rotation finds no usable
+   profile (every account cooling down), the router surfaces a REAL error
+   instead (is_error result marked `router_all_profiles_exhausted: true` +
+   non-zero exit). Masking that case as a success would block OpenClaw's
+   native model fallback; a real provider failure lets OpenClaw hand the turn
+   to the next model in `agents.defaults.model.fallbacks` (defaults/auto
+   sessions — user-pinned sessions surface the error visibly by OpenClaw's
+   design). The source-chat note still fires so a human sees why.
 5. **Source-chat notify.** Group-topic sessions never show final text upstream
    (openclaw#76424), so on rotation the router also fire-and-forgets the same
    message via `openclaw message send` into the source chat (topic-aware),
@@ -131,6 +139,7 @@ Interactive (non `-p/--print`) invocations skip all of this and just
 | `CLAUDE_PROFILES_FILE` | `/root/.openclaw/claude-profiles.json` | Profiles path (registry + `active` switch) |
 | `CLAUDE_AUTH_ROUTER_COOLDOWN_SECONDS` | `7200` | Fallback bench time for a limited profile, used only when the event's `resetsAt` is missing or fails sanity bounds. Claude limits run on ~5h windows; 2h keeps churn rare. |
 | `CLAUDE_AUTH_ROUTER_ROTATE_ON_RATE_LIMIT` | `1` | Set `0` to disable rotation (friendly message only) |
+| `CLAUDE_AUTH_ROUTER_ERROR_ON_EXHAUSTED` | `1` | When all profiles are limited, surface a real error so OpenClaw model fallback can fire. Set `0` for the old always-friendly synthetic success. |
 | `CLAUDE_AUTH_ROUTER_RATE_LIMIT_MESSAGE` | (built-in) | Override the user-facing limit message |
 
 Pinning: `claude-auth-router.sh --auth-profile <name> ...` forces a profile and
