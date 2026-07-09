@@ -26,7 +26,7 @@
 
 set -euo pipefail
 
-PROFILES_FILE="${CLAUDE_PROFILES_FILE:-/root/.openclaw/claude-profiles.json}"
+PROFILES_FILE="${CLAUDE_PROFILES_FILE:-${HOME:-/root}/.openclaw/claude-profiles.json}"
 PROFILE=""
 PROFILE_EXPLICIT=""
 
@@ -61,7 +61,7 @@ except Exception:
 ' "$PROFILES_FILE")"
 fi
 if [[ -z "$PROFILE" ]]; then
-  echo "[claude-auth-router] No profile selected. Set \"active\" in $PROFILES_FILE or pass --auth-profile <name>." >&2
+  echo "[claude-auth-router] No profile selected. This router is for multi-account setups: create $PROFILES_FILE (see claude-profiles.example.json) and set its \"active\" field, or pass --auth-profile <name>. Single-account hosts should run claude directly instead of wiring this router." >&2
   exit 1
 fi
 if [[ ! -f "$PROFILES_FILE" ]]; then
@@ -212,7 +212,16 @@ notify_source_chat() {
   [[ -n "$target" ]] || return 0
   local send_cmd=(openclaw message send --channel "$channel" --target "$target" -m "$FRIENDLY_RATE_LIMIT_MESSAGE")
   [[ -n "$thread" ]] && send_cmd+=(--thread-id "$thread")
-  timeout 15 "${send_cmd[@]}" >/dev/null 2>&1 &
+  # `timeout` is coreutils — absent on stock macOS (brew provides `gtimeout`).
+  # Fall back to a bare background send: still fire-and-forget, worst case a
+  # hung send lingers as a stray process instead of being reaped at 15s.
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 15 "${send_cmd[@]}" >/dev/null 2>&1 &
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout 15 "${send_cmd[@]}" >/dev/null 2>&1 &
+  else
+    "${send_cmd[@]}" >/dev/null 2>&1 &
+  fi
   disown 2>/dev/null || true
 }
 

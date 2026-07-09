@@ -76,26 +76,36 @@ Interactive (non `-p/--print`) invocations skip all of this and just
 
 | File | Purpose |
 |------|---------|
-| `claude-auth-router.sh` | The router. Install to e.g. `/root/scripts/`. |
-| `claude-profiles.example.json` | Template for `/root/.openclaw/claude-profiles.json`. |
+| `claude-auth-router.sh` | The router. Install to e.g. `~/scripts/` (or `/root/scripts/` on a root Linux host). |
+| `claude-profiles.example.json` | Template for `~/.openclaw/claude-profiles.json`. |
 | `openclaw-config-snippet.json5` | The one config change: `cliBackends.claude-cli.command`. |
 
 ## Requirements
 
-- bash, python3 (stdlib only — no pip installs), coreutils (`timeout`, `mkfifo`)
+- bash 3.2+ (stock macOS bash works — no bash-4isms), python3 (stdlib only —
+  no pip installs)
+- `timeout` (coreutils) is optional: the router auto-falls back to `gtimeout`
+  (brew coreutils) or a bare background send for the chat notify
 - `claude` CLI on PATH for the gateway user
 - `openclaw` CLI on PATH (only needed for the source-chat notify; everything
   else works without it)
 
+This router is for **multi-account** setups. If the host has a single Claude
+login there is nothing to rotate — run `claude` directly and skip the kit.
+
 ## Install (on the target OpenClaw host)
+
+Paths below use `~` — that's `/root` on a root Linux VPS, `/Users/<you>` on a
+Mac. The profiles path defaults to `~/.openclaw/claude-profiles.json` for
+whatever user runs the gateway; override with `CLAUDE_PROFILES_FILE` if needed.
 
 1. **Script:**
    ```bash
-   install -m 0755 claude-auth-router.sh /root/scripts/claude-auth-router.sh
+   install -m 0755 claude-auth-router.sh ~/scripts/claude-auth-router.sh
    ```
 
 2. **Profiles file:** copy `claude-profiles.example.json` to
-   `/root/.openclaw/claude-profiles.json`, rename profiles/labels to taste.
+   `~/.openclaw/claude-profiles.json`, rename profiles/labels to taste.
    Rules: `env_var` names must be shell-safe (`[A-Za-z_][A-Za-z0-9_]*`, no
    hyphens). A profile whose env var is unset/empty is skipped by rotation —
    handy for parking a disabled account.
@@ -107,14 +117,16 @@ Interactive (non `-p/--print`) invocations skip all of this and just
    ```
    The router rewrites it on rotation. To switch manually, edit the field:
    ```bash
-   python3 -c 'import json;p="/root/.openclaw/claude-profiles.json";d=json.load(open(p));d["active"]="primary";json.dump(d,open(p,"w"),indent=2)'
+   python3 -c 'import json,os;p=os.path.expanduser("~/.openclaw/claude-profiles.json");d=json.load(open(p));d["active"]="primary";json.dump(d,open(p,"w"),indent=2)'
    ```
    (Earlier versions used a standalone `claude-auth-active` file; it is retired
    and the router no longer reads or creates it.)
 
 4. **Tokens:** generate one long-lived token per Claude account with
-   `claude setup-token` (run as that account), then put them in the gateway's
-   environment — e.g. `/root/.openclaw/.env` and/or the systemd unit env:
+   `claude setup-token` (log in as that account, run it, log back into your
+   main account — the token keeps working), then put them in the gateway's
+   environment — `~/.openclaw/.env` (mode 600), plus the systemd unit env on
+   Linux:
    ```bash
    ANTHROPIC_OAUTH_TOKEN1=sk-ant-oat01-...
    ANTHROPIC_OAUTH_TOKEN2=sk-ant-oat01-...
@@ -127,16 +139,34 @@ Interactive (non `-p/--print`) invocations skip all of this and just
 
 6. **Smoke test (as the gateway user, with the env loaded):**
    ```bash
-   /root/scripts/claude-auth-router.sh -p 'Reply exactly: ROUTER_OK' \
+   ~/scripts/claude-auth-router.sh -p 'Reply exactly: ROUTER_OK' \
      --output-format json --model claude-haiku-4-5
    ```
    Then one real turn through OpenClaw on a `claude-cli/*` model.
+
+## macOS notes (single-machine setup)
+
+The router is Keychain-agnostic and works on a Mac as-is:
+
+- macOS Claude CLI stores its *interactive-login* OAuth creds in the Keychain,
+  but `CLAUDE_CODE_OAUTH_TOKEN` (which the router exports from the selected
+  profile) **takes precedence** over stored creds. Router-managed runs never
+  read or write the Keychain; your normal `claude` login stays untouched for
+  ambient use.
+- `claude setup-token` tokens are what go in the profile env vars — the
+  Keychain is irrelevant to them.
+- Stock bash 3.2 is fine (no bash-4isms); locking is Python `fcntl.flock`.
+- `timeout` doesn't exist on stock macOS. The router auto-detects and uses
+  `gtimeout` (from `brew install coreutils`) or falls back to a bare
+  background send — the chat notify degrades gracefully, turns are never
+  affected.
+- Use absolute paths in `openclaw.json` (`/Users/<you>/scripts/...`), not `~`.
 
 ## Tuning (env vars, all optional)
 
 | Var | Default | Meaning |
 |-----|---------|---------|
-| `CLAUDE_PROFILES_FILE` | `/root/.openclaw/claude-profiles.json` | Profiles path (registry + `active` switch) |
+| `CLAUDE_PROFILES_FILE` | `~/.openclaw/claude-profiles.json` | Profiles path (registry + `active` switch); `~` = the gateway user's home |
 | `CLAUDE_AUTH_ROUTER_COOLDOWN_SECONDS` | `7200` | Fallback bench time for a limited profile, used only when the event's `resetsAt` is missing or fails sanity bounds. Claude limits run on ~5h windows; 2h keeps churn rare. |
 | `CLAUDE_AUTH_ROUTER_ROTATE_ON_RATE_LIMIT` | `1` | Set `0` to disable rotation (friendly message only) |
 | `CLAUDE_AUTH_ROUTER_ERROR_ON_EXHAUSTED` | `1` | When all profiles are limited, surface a real error so OpenClaw model fallback can fire. Set `0` for the old always-friendly synthetic success. |

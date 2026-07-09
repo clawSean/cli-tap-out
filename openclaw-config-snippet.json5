@@ -1,5 +1,7 @@
 // Merge into openclaw.json — do NOT clobber your existing cliBackends block.
 // This wires the router in front of the bundled claude-cli backend.
+// Use an absolute path for command (no ~): /root/scripts/... on a root Linux
+// host, /Users/<you>/scripts/... on a Mac.
 {
   agents: {
     defaults: {
