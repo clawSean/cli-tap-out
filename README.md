@@ -198,18 +198,6 @@ disables rotation for that run (used by foreman-style dispatch tooling).
 - **Notify lane is best-effort by design:** `timeout 15 ... & disown`. A missed
   notification is fine; a rotation blocked on a hung send is not.
 
-## Roadmap
-
-- **Auto-resend after a successful rotation.** Today a rotation ends the turn
-  with a "switched accounts, resend your last message" notice and the user
-  retries manually. Planned: on a successful switch, relaunch claude with the
-  new token and replay the turn automatically (N silent internal hops → one
-  answer), guarded by a max-hop count; all-profiles-exhausted keeps the
-  current error path. Keep the rotation notice message even once auto-resend
-  lands — visibility into *when* a switch happened is a feature, the manual
-  resend is the part to remove. (Logged 2026-07-03, refined 2026-07-09;
-  deliberately not built yet — current behavior stays until then.)
-
 ## Architecture note
 
 This is deliberately *not* an OpenClaw plugin. The plugin CLI-backend SDK
