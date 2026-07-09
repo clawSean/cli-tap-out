@@ -43,7 +43,7 @@ Claude accounts usable from OpenClaw's Claude CLI backend.
    SIGTERMs the claude process (critical — in live sessions claude outlives the
    turn and a stranded process = stuck typing indicator forever).
 3. **Rotation.** Marks the limited profile with a cooldown, atomically flips
-   `active` in the JSON **and** the `claude-auth-active` file (flock-protected),
+   the `active` field in the profiles JSON (flock-protected),
    and picks the next profile whose token env var is set and not cooling down.
    The cooldown uses the real reset time when available: the rejected
    `rate_limit_event` carries `rate_limit_info.resetsAt` (unix timestamp of the
@@ -92,13 +92,17 @@ Interactive (non `-p/--print`) invocations skip all of this and just
    hyphens). A profile whose env var is unset/empty is skipped by rotation —
    handy for parking a disabled account.
 
-3. **Active-profile file:**
-   ```bash
-   echo primary > /root/.openclaw/claude-auth-active
+3. **Active profile:** the JSON `active` field in `claude-profiles.json` is the
+   single canonical switch. Set it in the profiles file:
+   ```json
+   { "active": "primary", "profiles": { ... } }
    ```
-   This file is the canonical switch and **wins over** the JSON `active` field.
-   The router rewrites both on rotation. Don't delete it — treat it as a shared
-   contract if other tooling wants to know the current profile.
+   The router rewrites it on rotation. To switch manually, edit the field:
+   ```bash
+   python3 -c 'import json;p="/root/.openclaw/claude-profiles.json";d=json.load(open(p));d["active"]="primary";json.dump(d,open(p,"w"),indent=2)'
+   ```
+   (Earlier versions used a standalone `claude-auth-active` file; it is retired
+   and the router no longer reads or creates it.)
 
 4. **Tokens:** generate one long-lived token per Claude account with
    `claude setup-token` (run as that account), then put them in the gateway's
@@ -124,8 +128,7 @@ Interactive (non `-p/--print`) invocations skip all of this and just
 
 | Var | Default | Meaning |
 |-----|---------|---------|
-| `CLAUDE_PROFILES_FILE` | `/root/.openclaw/claude-profiles.json` | Profiles path |
-| `CLAUDE_AUTH_ACTIVE_FILE` | `/root/.openclaw/claude-auth-active` | Active-profile file |
+| `CLAUDE_PROFILES_FILE` | `/root/.openclaw/claude-profiles.json` | Profiles path (registry + `active` switch) |
 | `CLAUDE_AUTH_ROUTER_COOLDOWN_SECONDS` | `7200` | Fallback bench time for a limited profile, used only when the event's `resetsAt` is missing or fails sanity bounds. Claude limits run on ~5h windows; 2h keeps churn rare. |
 | `CLAUDE_AUTH_ROUTER_ROTATE_ON_RATE_LIMIT` | `1` | Set `0` to disable rotation (friendly message only) |
 | `CLAUDE_AUTH_ROUTER_RATE_LIMIT_MESSAGE` | (built-in) | Override the user-facing limit message |

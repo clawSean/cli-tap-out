@@ -5,22 +5,21 @@
 #
 # Active-profile selection precedence (highest first):
 #   1. --auth-profile / --profile CLI flag
-#   2. ACTIVE_FILE (claude-auth-active)  <-- canonical switch, read first
-#   3. "active" field in claude-profiles.json  <-- fallback only
-# If ACTIVE_FILE and the JSON "active" field disagree, the FILE wins.
+#   2. "active" field in claude-profiles.json  <-- single source of truth
 #
-# Do not delete claude-auth-active: it is a shared contract. Besides this
-# router, the claude-foreman skill reads it as the default profile for the
-# claude-cli lane (dispatch.sh, smoke-claude-profile.sh, mac auth router).
-# On a rate-limit rotation this script rewrites BOTH the JSON "active" field
-# and ACTIVE_FILE so the next run (and the foreman) picks up the new profile.
+# The old standalone claude-auth-active file is retired: claude-profiles.json
+# holds both the profile registry and the active switch. Every consumer
+# (this router, claude-foreman dispatch.sh, smoke-claude-profile.sh, the mac
+# auth router) reads the JSON "active" field. On a rate-limit rotation this
+# script rewrites the JSON "active" field under the profiles lock so the next
+# run (and the foreman) picks up the new profile. To switch manually, edit
+# the "active" field in claude-profiles.json.
 #
 # Token env var names must be shell-safe: [A-Za-z_][A-Za-z0-9_]* (no hyphens).
 
 set -euo pipefail
 
 PROFILES_FILE="${CLAUDE_PROFILES_FILE:-/root/.openclaw/claude-profiles.json}"
-ACTIVE_FILE="${CLAUDE_AUTH_ACTIVE_FILE:-/root/.openclaw/claude-auth-active}"
 PROFILE=""
 PROFILE_EXPLICIT=""
 
@@ -46,9 +45,6 @@ case "${1:-}" in
 esac
 
 if [[ -z "$PROFILE" ]]; then
-  PROFILE="$(tr -d '[:space:]' < "$ACTIVE_FILE" 2>/dev/null || true)"
-fi
-if [[ -z "$PROFILE" ]]; then
   PROFILE="$(python3 -c '
 import json, sys
 try:
@@ -58,7 +54,7 @@ except Exception:
 ' "$PROFILES_FILE")"
 fi
 if [[ -z "$PROFILE" ]]; then
-  echo "[claude-auth-router] No profile selected. Set $ACTIVE_FILE or pass --auth-profile <name>." >&2
+  echo "[claude-auth-router] No profile selected. Set \"active\" in $PROFILES_FILE or pass --auth-profile <name>." >&2
   exit 1
 fi
 if [[ ! -f "$PROFILES_FILE" ]]; then
@@ -218,7 +214,6 @@ rotate_rate_limited_profile() {
   local rotate_meta
   rotate_meta="$(
     CLAUDE_AUTH_ROUTER_PROFILES_FILE="$PROFILES_FILE" \
-    CLAUDE_AUTH_ROUTER_ACTIVE_FILE="$ACTIVE_FILE" \
     CLAUDE_AUTH_ROUTER_CURRENT_PROFILE="$PROFILE" \
     CLAUDE_AUTH_ROUTER_COOLDOWN_SECONDS="$RATE_LIMIT_COOLDOWN_SECONDS" \
     CLAUDE_AUTH_ROUTER_RESET_AT="$RATE_LIMIT_RESET_AT" \
@@ -231,7 +226,6 @@ import time
 
 sep = "\x1f"
 profiles_file = os.environ["CLAUDE_AUTH_ROUTER_PROFILES_FILE"]
-active_file = os.environ["CLAUDE_AUTH_ROUTER_ACTIVE_FILE"]
 current = os.environ["CLAUDE_AUTH_ROUTER_CURRENT_PROFILE"]
 cooldown_seconds = int(os.environ.get("CLAUDE_AUTH_ROUTER_COOLDOWN_SECONDS") or "7200")
 try:
@@ -304,12 +298,6 @@ try:
         os.replace(tmp_path, profiles_file)
 
         if next_profile:
-            active_dir = os.path.dirname(active_file) or "."
-            os.makedirs(active_dir, exist_ok=True)
-            fd, tmp_active = tempfile.mkstemp(prefix=".claude-auth-active.", dir=active_dir)
-            with os.fdopen(fd, "w") as fh:
-                fh.write(next_profile[0] + "\n")
-            os.replace(tmp_active, active_file)
             emit("ROTATED", next_profile[0], next_profile[1])
         else:
             emit("NO_READY_PROFILE", "", "")
