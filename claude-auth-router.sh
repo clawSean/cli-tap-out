@@ -202,13 +202,15 @@ notify_source_chat() {
     return 0  # final text is delivered normally; skip to avoid a duplicate
   fi
   local channel="${OPENCLAW_MCP_MESSAGE_CHANNEL:-${channel_id%%:*}}"
-  local rest="${channel_id#*:}" target thread=""
-  if [[ "$rest" == *":topic:"* ]]; then
-    target="${rest%%:topic:*}"
-    thread="${rest##*:topic:}"
-  else
-    target="$rest"
+  local target="$channel_id" thread=""
+  if [[ -n "$channel" && "$target" == "$channel:"* ]]; then
+    target="${target#"$channel:"}"
   fi
+  if [[ "$target" == *":topic:"* ]]; then
+    thread="${target##*:topic:}"
+    target="${target%%:topic:*}"
+  fi
+  [[ -n "$thread" || -z "${OPENCLAW_MCP_CURRENT_THREAD_TS:-}" ]] || thread="$OPENCLAW_MCP_CURRENT_THREAD_TS"
   [[ -n "$target" ]] || return 0
   local send_cmd=(openclaw message send --channel "$channel" --target "$target" -m "$FRIENDLY_RATE_LIMIT_MESSAGE")
   [[ -n "$thread" ]] && send_cmd+=(--thread-id "$thread")
