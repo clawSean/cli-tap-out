@@ -1,0 +1,184 @@
+{
+  "id": "claude-auth-router",
+  "name": "Claude Account Router",
+  "version": "0.3.0",
+  "description": "Standalone claude backend with subscription account routing.",
+  "cliBackends": [
+    "claude"
+  ],
+  "setup": {
+    "cliBackends": [
+      "claude"
+    ],
+    "requiresRuntime": true
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "command": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "providers": [
+    "claude"
+  ],
+  "providerCatalogEntry": "./src/provider.mjs",
+  "syntheticAuthRefs": [
+    "claude",
+    "anthropic"
+  ],
+  "nonSecretAuthMarkers": [
+    "openclaw:claude-router-native-auth"
+  ],
+  "modelCatalog": {
+    "providers": {
+      "claude": {
+        "models": [
+          {
+            "id": "claude-fable-5",
+            "name": "Claude Fable 5",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "mediaInput": {
+              "image": {
+                "maxSidePx": 2576,
+                "preferredSidePx": 2576,
+                "tokenMode": "provider"
+              }
+            },
+            "contextWindow": 1000000,
+            "contextWindows": [
+              {
+                "id": "200k",
+                "label": "200K",
+                "contextWindow": 200000
+              },
+              {
+                "id": "1m",
+                "label": "1M",
+                "contextWindow": 1000000
+              }
+            ],
+            "contextWindowDefault": "1m",
+            "maxTokens": 128000
+          },
+          {
+            "id": "claude-opus-4-8",
+            "name": "Claude Opus 4.8",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "mediaInput": {
+              "image": {
+                "maxSidePx": 2576,
+                "preferredSidePx": 2576,
+                "tokenMode": "provider"
+              }
+            },
+            "contextWindow": 1000000,
+            "maxTokens": 128000
+          },
+          {
+            "id": "claude-opus-4-6",
+            "name": "Claude Opus 4.6",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "mediaInput": {
+              "image": {
+                "maxSidePx": 1568,
+                "preferredSidePx": 1568,
+                "tokenMode": "provider"
+              }
+            },
+            "contextWindow": 200000,
+            "maxTokens": 128000
+          },
+          {
+            "id": "claude-sonnet-4-6",
+            "name": "Claude Sonnet 4.6",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "mediaInput": {
+              "image": {
+                "maxSidePx": 1568,
+                "preferredSidePx": 1568,
+                "tokenMode": "provider"
+              }
+            },
+            "contextWindow": 200000,
+            "maxTokens": 128000
+          },
+          {
+            "id": "claude-haiku-4-5",
+            "name": "Claude Haiku 4.5",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "mediaInput": {
+              "image": {
+                "maxSidePx": 1568,
+                "preferredSidePx": 1568,
+                "tokenMode": "provider"
+              }
+            },
+            "contextWindow": 200000,
+            "maxTokens": 64000
+          },
+          {
+            "id": "claude-sonnet-5",
+            "name": "Claude Sonnet 5",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "mediaInput": {
+              "image": {
+                "maxSidePx": 2576,
+                "preferredSidePx": 2576,
+                "tokenMode": "provider"
+              }
+            },
+            "contextWindow": 1000000,
+            "contextWindows": [
+              {
+                "id": "200k",
+                "label": "200K",
+                "contextWindow": 200000
+              },
+              {
+                "id": "1m",
+                "label": "1M",
+                "contextWindow": 1000000
+              }
+            ],
+            "contextWindowDefault": "1m",
+            "maxTokens": 128000
+          }
+        ]
+      }
+    },
+    "discovery": {
+      "claude": "static"
+    }
+  }
+}

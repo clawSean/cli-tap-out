@@ -456,7 +456,7 @@ PY
 
 is_rate_limit_file() {
   python3 - "$1" <<'PY'
-import pathlib, re, sys
+import json, pathlib, re, sys
 
 path = pathlib.Path(sys.argv[1])
 try:
@@ -464,11 +464,35 @@ try:
 except Exception:
     text = ""
 
+def overage_can_continue(info):
+    status = str(info.get("overageStatus") or info.get("overage_status") or "").lower()
+    return status in {"allowed", "allowed_warning"} or bool(
+        info.get("overageInUse") or info.get("isUsingOverage")
+    )
+
+def has_blocked_rate_limit(value):
+    if isinstance(value, dict):
+        info = value.get("rate_limit_info")
+        if isinstance(info, dict):
+            status = str(info.get("status") or "").lower()
+            if status == "rejected" and not overage_can_continue(info):
+                return True
+        return any(has_blocked_rate_limit(item) for item in value.values())
+    if isinstance(value, list):
+        return any(has_blocked_rate_limit(item) for item in value)
+    return False
+
+for line in text.splitlines():
+    try:
+        if has_blocked_rate_limit(json.loads(line)):
+            raise SystemExit(0)
+    except json.JSONDecodeError:
+        pass
+
 patterns = [
     r"\byou(?:'ve| have) hit your session limit\b",
     r'"api_error_status"\s*:\s*"?(?:429|529)"?',
     r'"error"\s*:\s*"rate_limit"',
-    r'"rate_limit_info"\s*:\s*\{[^}]*"status"\s*:\s*"rejected"',
     r"\busage limit\b",
     r"\brate[- ]?limit(?:ed)?\b",
     r"\btoo many concurrent requests\b",
@@ -571,10 +595,14 @@ def rejected_rate_limit(ev):
         if candidate > 0:
             reset_at = candidate
         status = str(info.get("status") or "").lower()
-        # overageStatus:"rejected" with org_level_disabled is a permanent,
-        # normal state on subscription orgs (no overage billing) — it fires on
-        # EVERY turn and must not be treated as a rate limit. Only the primary
-        # status field says whether this request was actually rejected.
+        overage_status = str(info.get("overageStatus") or info.get("overage_status") or "").lower()
+        overage_in_use = bool(info.get("overageInUse") or info.get("isUsingOverage"))
+        # The primary subscription quota can be rejected while Claude keeps
+        # serving the request from paid Extra Usage. Wait for the terminal
+        # result whenever overage is allowed/in use; a real 429/529 still gets
+        # caught below. Conversely, org_level_disabled/rejected is not usable.
+        if overage_status in {"allowed", "allowed_warning"} or overage_in_use:
+            return False
         return status == "rejected"
     if ev.get("error") == "rate_limit" or ev.get("error") == "overage":
         return True

@@ -1,15 +1,18 @@
-// Merge into openclaw.json — do NOT clobber your existing cliBackends block.
-// This wires the router in front of the bundled claude-cli backend.
-// Use an absolute path for command (no ~): /root/scripts/... on a root Linux
-// host, /Users/<you>/scripts/... on a Mac.
+// Merge these entries; preserve existing plugins, models, and allowlists.
 {
+  plugins: {
+    load: { paths: ["/absolute/path/to/cli-tap-out"] },
+    allow: ["claude-auth-router"],
+    entries: { "claude-auth-router": { enabled: true, config: {} } }
+  },
   agents: {
     defaults: {
-      cliBackends: {
-        "claude-cli": {
-          command: "/root/scripts/claude-auth-router.sh"
+      models: {
+        "claude/claude-sonnet-4-6": {
+          alias: "sonnet"
         }
-      }
+      },
+      modelPolicy: { allow: ["claude/claude-sonnet-4-6"] }
     }
   }
 }
