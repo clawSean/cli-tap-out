@@ -108,6 +108,10 @@ test("manifest and source contain no private runtime imports or Anthropic identi
   const manifest = JSON.parse(readFileSync(new URL("../openclaw.plugin.json", import.meta.url)));
   assert.deepEqual(manifest.cliBackends, ["claude"]);
   assert.deepEqual(manifest.setup.cliBackends, ["claude"]);
+  assert.equal(manifest.modelCatalog.providers.claude.models[0].id, "claude-fable-5-1");
+  assert.ok(
+    manifest.modelCatalog.providers.claude.models.some((model) => model.id === "claude-fable-5"),
+  );
   for (const name of readdirSync(new URL("../src/", import.meta.url))) {
     const src = readFileSync(new URL("../src/" + name, import.meta.url), "utf8");
     assert.doesNotMatch(

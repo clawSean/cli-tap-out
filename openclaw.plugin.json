@@ -1,7 +1,7 @@
 {
   "id": "claude-auth-router",
   "name": "Claude Account Router",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Standalone claude backend with subscription account routing.",
   "cliBackends": [
     "claude"
@@ -40,6 +40,37 @@
     "providers": {
       "claude": {
         "models": [
+          {
+            "id": "claude-fable-5-1",
+            "name": "Claude Fable 5.1",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "mediaInput": {
+              "image": {
+                "maxSidePx": 2576,
+                "preferredSidePx": 2576,
+                "tokenMode": "provider"
+              }
+            },
+            "contextWindow": 1000000,
+            "contextWindows": [
+              {
+                "id": "200k",
+                "label": "200K",
+                "contextWindow": 200000
+              },
+              {
+                "id": "1m",
+                "label": "1M",
+                "contextWindow": 1000000
+              }
+            ],
+            "contextWindowDefault": "1m",
+            "maxTokens": 128000
+          },
           {
             "id": "claude-fable-5",
             "name": "Claude Fable 5",
